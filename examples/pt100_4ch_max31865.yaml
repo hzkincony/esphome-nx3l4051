@@ -1,0 +1,103 @@
+esphome:
+  name: pt100-4ch
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: esp-idf
+
+logger:
+api:
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: "YOUR_WIFI_SSID"
+  password: "YOUR_WIFI_PASSWORD"
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+    components: [nx3l4051]
+
+spi:
+  clk_pin: GPIO12
+  mosi_pin: GPIO11
+  miso_pin: GPIO13
+
+nx3l4051:
+  - id: pt100_mux
+    pin_s1: GPIO7
+    pin_s2: GPIO21
+    pin_s3: LOW
+    delay: 20ms
+
+sensor:
+  - platform: max31865
+    id: pt100_reader
+    internal: true
+    cs_pin: GPIO10
+    reference_resistance: 400 ohm
+    rtd_nominal_resistance: 100 ohm
+    rtd_wires: 3
+    mains_filter: 50 Hz
+    update_interval: never
+
+  - platform: template
+    id: pt100_1
+    name: "PT100 1"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 2
+
+  - platform: template
+    id: pt100_2
+    name: "PT100 2"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 2
+
+  - platform: template
+    id: pt100_3
+    name: "PT100 3"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 2
+
+  - platform: template
+    id: pt100_4
+    name: "PT100 4"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 2
+
+globals:
+  - id: pt100_channel
+    type: uint8_t
+    restore_value: no
+    initial_value: "0"
+
+interval:
+  - interval: 10s
+    then:
+      - repeat:
+          count: 4
+          then:
+            - nx3l4051.select:
+                id: pt100_mux
+                channel: !lambda "return id(pt100_channel);"
+            - component.update: pt100_reader
+            - lambda: |-
+                const float value = id(pt100_reader).state;
+                switch (id(pt100_channel)) {
+                  case 0: id(pt100_1).publish_state(value); break;
+                  case 1: id(pt100_2).publish_state(value); break;
+                  case 2: id(pt100_3).publish_state(value); break;
+                  case 3: id(pt100_4).publish_state(value); break;
+                }
+                id(pt100_channel) = (id(pt100_channel) + 1) % 4;
