@@ -72,6 +72,8 @@ Disable the mux if `enable_pin` is configured:
 
 This example reads four 3-wire PT100 sensors through one MAX31865. Two NX3L4051 chips share the same select lines: one switches the PT100 `A` lines, the other switches the `B` lines, and the third PT100 wire is common. Because the select lines are shared, one `nx3l4051` component instance controls both physical muxes.
 
+It uses the companion `nx3l4051_max31865` sensor platform. The platform keeps MAX31865 VBIAS enabled while channels are switched, uses one uninterrupted SPI transaction per register access, and starts a one-shot conversion without running the MAX31865 automatic fault-detection sequence on every channel.
+
 The example pin assignment is:
 
 | Function | GPIO |

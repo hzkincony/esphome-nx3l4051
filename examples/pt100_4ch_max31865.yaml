@@ -19,13 +19,7 @@ external_components:
   - source:
       type: local
       path: ../components
-    components: [nx3l4051]
-
-# MAX31865 SPI bus
-spi:
-  clk_pin: GPIO11
-  mosi_pin: GPIO10
-  miso_pin: GPIO12
+    components: [nx3l4051, nx3l4051_max31865]
 
 # The two NX3L4051 chips share these select lines. The 20ms delay lets
 # the analog paths settle before starting a MAX31865 conversion.
@@ -37,9 +31,13 @@ nx3l4051:
     delay: 20ms
 
 sensor:
-  - platform: max31865
+  - platform: nx3l4051_max31865
     id: pt100_reader
+    mux_id: pt100_mux
     internal: true
+    clk_pin: GPIO11
+    mosi_pin: GPIO10
+    miso_pin: GPIO12
     cs_pin: GPIO14
     reference_resistance: 400 ohm
     rtd_nominal_resistance: 100 ohm
