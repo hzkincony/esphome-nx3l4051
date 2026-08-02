@@ -4,3 +4,4 @@ __pycache__/
 .pioenvs/
 .piolibdeps/
 /.agent-shell/
+/.direnv/
