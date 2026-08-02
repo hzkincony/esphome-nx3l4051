@@ -24,6 +24,7 @@ class NX3L4051Component : public Component {
 
   void select_channel(uint8_t channel);
   void disable();
+  uint8_t get_current_channel() const { return this->current_channel_; }
 
  protected:
   class SelectPin {

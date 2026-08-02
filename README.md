@@ -70,6 +70,22 @@ Disable the mux if `enable_pin` is configured:
 
 ## PT100 / MAX31865 Example
 
-For 4-channel 3-wire PT100 hardware, use two NX3L4051 chips with shared select pins: one mux switches the `A` lines, the other switches the `B` lines. The third PT100 wire is common. MAX31865 performs the RTD measurement.
+This example reads four 3-wire PT100 sensors through one MAX31865. Two NX3L4051 chips share the same select lines: one switches the PT100 `A` lines, the other switches the `B` lines, and the third PT100 wire is common. Because the select lines are shared, one `nx3l4051` component instance controls both physical muxes.
 
-See [examples/pt100_4ch_max31865.yaml](examples/pt100_4ch_max31865.yaml).
+It uses the companion `nx3l4051_max31865` sensor platform. The platform keeps MAX31865 VBIAS enabled while channels are switched, uses one uninterrupted SPI transaction per register access, and starts a one-shot conversion without running the MAX31865 automatic fault-detection sequence on every channel.
+
+The example pin assignment is:
+
+| Function | GPIO |
+| --- | --- |
+| NX3L4051 S1 | GPIO7 |
+| NX3L4051 S2 | GPIO21 |
+| NX3L4051 S3 | Fixed LOW |
+| SPI CLK | GPIO11 |
+| SPI MOSI | GPIO10 |
+| SPI MISO | GPIO12 |
+| MAX31865 CS | GPIO14 |
+
+Each channel is sampled by switching the mux, waiting 20 ms for the analog path to settle, starting a MAX31865 one-shot conversion, waiting 70 ms for the asynchronous 50 Hz conversion, and then publishing the result before selecting the next channel.
+
+See [examples/pt100_4ch_max31865.yaml](examples/pt100_4ch_max31865.yaml) for the complete ESPHome configuration.
