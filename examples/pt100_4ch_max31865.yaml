@@ -21,11 +21,14 @@ external_components:
       path: ../components
     components: [nx3l4051]
 
+# MAX31865 SPI bus
 spi:
-  clk_pin: GPIO12
-  mosi_pin: GPIO11
-  miso_pin: GPIO13
+  clk_pin: GPIO11
+  mosi_pin: GPIO10
+  miso_pin: GPIO12
 
+# The two NX3L4051 chips share these select lines. The 20ms delay lets
+# the analog paths settle before starting a MAX31865 conversion.
 nx3l4051:
   - id: pt100_mux
     pin_s1: GPIO7
@@ -37,7 +40,7 @@ sensor:
   - platform: max31865
     id: pt100_reader
     internal: true
-    cs_pin: GPIO10
+    cs_pin: GPIO14
     reference_resistance: 400 ohm
     rtd_nominal_resistance: 100 ohm
     rtd_wires: 3
@@ -92,6 +95,9 @@ interval:
                 id: pt100_mux
                 channel: !lambda "return id(pt100_channel);"
             - component.update: pt100_reader
+            # MAX31865 completes a 50Hz one-shot conversion asynchronously in
+            # at most 66ms. This non-blocking delay lets its callback run.
+            - delay: 70ms
             - lambda: |-
                 const float value = id(pt100_reader).state;
                 switch (id(pt100_channel)) {
