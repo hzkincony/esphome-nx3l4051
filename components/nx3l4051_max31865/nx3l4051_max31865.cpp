@@ -3,13 +3,20 @@
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
 
+#include <cmath>
+
 namespace esphome {
 namespace nx3l4051_max31865 {
 
 static const char *const TAG = "nx3l4051_max31865";
 
+static const uint8_t SPI_WRITE_MASK = 0x80;
+static const uint8_t CONFIGURATION_REG = 0x00;
+static const uint8_t RTD_RESISTANCE_MSB_REG = 0x01;
+static const uint8_t FAULT_STATUS_REG = 0x07;
 static const uint8_t CONFIG_VBIAS = 1 << 7;
 static const uint8_t CONFIG_1SHOT = 1 << 5;
+static const uint8_t CONFIG_3WIRE = 1 << 4;
 static const uint8_t CONFIG_FAULT_CLEAR = 1 << 1;
 
 void NX3L4051MAX31865Sensor::setup() {
@@ -42,12 +49,12 @@ void NX3L4051MAX31865Sensor::setup() {
   }
 
   // Match the MAX31865 initialization sequence by reading the configuration before its first write.
-  (void) this->read_register_transaction_(max31865::CONFIGURATION_REG);
-  this->base_config_ = this->filter_ & 1;
+  (void) this->read_register_transaction_(CONFIGURATION_REG);
+  this->base_config_ = static_cast<uint8_t>(this->filter_) & 1;
   if (this->rtd_wires_ == 3) {
-    this->base_config_ |= 1 << 4;
+    this->base_config_ |= CONFIG_3WIRE;
   }
-  this->write_register_transaction_(max31865::CONFIGURATION_REG,
+  this->write_register_transaction_(CONFIGURATION_REG,
                                     this->base_config_ | CONFIG_VBIAS | CONFIG_FAULT_CLEAR);
 }
 
@@ -66,26 +73,26 @@ void NX3L4051MAX31865Sensor::dump_config() {
                 "  VBIAS: always on\n"
                 "  Automatic fault detection: disabled",
                 this->reference_resistance_, this->rtd_wires_, this->rtd_nominal_resistance_,
-                this->filter_ == max31865::FILTER_60HZ ? "60 Hz" : "50 Hz");
+                this->filter_ == FILTER_60HZ ? "60 Hz" : "50 Hz");
 }
 
 void NX3L4051MAX31865Sensor::update() {
-  const uint8_t faults = this->read_register_transaction_(max31865::FAULT_STATUS_REG);
+  const uint8_t faults = this->read_register_transaction_(FAULT_STATUS_REG);
   if (faults != 0) {
-    this->write_register_transaction_(max31865::CONFIGURATION_REG,
+    this->write_register_transaction_(CONFIGURATION_REG,
                                       this->base_config_ | CONFIG_VBIAS | CONFIG_FAULT_CLEAR);
   }
 
-  this->write_register_transaction_(max31865::CONFIGURATION_REG,
+  this->write_register_transaction_(CONFIGURATION_REG,
                                     this->base_config_ | CONFIG_VBIAS | CONFIG_1SHOT);
-  this->set_timeout("value", this->filter_ == max31865::FILTER_60HZ ? 55 : 66,
+  this->set_timeout("value", this->filter_ == FILTER_60HZ ? 55 : 66,
                     [this]() { this->read_data_keep_bias_(); });
 }
 
 void NX3L4051MAX31865Sensor::read_data_keep_bias_() {
   const uint16_t rtd_register =
-      this->read_register_16_transaction_(max31865::RTD_RESISTANCE_MSB_REG);
-  const uint8_t faults = this->read_register_transaction_(max31865::FAULT_STATUS_REG);
+      this->read_register_16_transaction_(RTD_RESISTANCE_MSB_REG);
+  const uint8_t faults = this->read_register_transaction_(FAULT_STATUS_REG);
   const uint8_t channel = this->mux_ == nullptr ? 0 : this->mux_->get_current_channel();
   const float resistance = static_cast<float>(rtd_register >> 1) * this->reference_resistance_ / 32768.0f;
   ESP_LOGD(TAG, "Channel %u: raw=0x%04X, resistance=%.2fΩ, faults=0x%02X", channel, rtd_register, resistance,
@@ -136,7 +143,7 @@ void NX3L4051MAX31865Sensor::write_register_transaction_(uint8_t reg, uint8_t va
   spi_transaction_t transaction{};
   transaction.flags = SPI_TRANS_USE_TXDATA;
   transaction.length = 16;
-  transaction.tx_data[0] = reg | max31865::SPI_WRITE_M;
+  transaction.tx_data[0] = reg | SPI_WRITE_MASK;
   transaction.tx_data[1] = value;
   this->begin_transaction_();
   const esp_err_t err = spi_device_transmit(this->spi_device_, &transaction);
@@ -174,6 +181,38 @@ uint16_t NX3L4051MAX31865Sensor::read_register_16_transaction_(uint8_t reg) {
     return 0xFFFF;
   }
   return (static_cast<uint16_t>(transaction.rx_data[1]) << 8) | transaction.rx_data[2];
+}
+
+float NX3L4051MAX31865Sensor::calc_temperature_(float rtd_ratio) {
+  const float a = 3.9083e-3f;
+  const float b = -5.775e-7f;
+  const float z1 = -a;
+  const float z2 = a * a - 4 * b;
+  const float z3 = 4 * b / this->rtd_nominal_resistance_;
+  const float z4 = 2 * b;
+
+  float rtd_resistance = rtd_ratio * this->reference_resistance_;
+  const float pos_temp = (z1 + std::sqrt(z2 + (z3 * rtd_resistance))) / z4;
+  if (pos_temp >= 0) {
+    return pos_temp;
+  }
+
+  if (this->rtd_nominal_resistance_ != 100) {
+    rtd_resistance /= this->rtd_nominal_resistance_;
+    rtd_resistance *= 100;
+  }
+  float rpoly = rtd_resistance;
+  float neg_temp = -242.02f;
+  neg_temp += 2.2228f * rpoly;
+  rpoly *= rtd_resistance;
+  neg_temp += 2.5859e-3f * rpoly;
+  rpoly *= rtd_resistance;
+  neg_temp -= 4.8260e-6f * rpoly;
+  rpoly *= rtd_resistance;
+  neg_temp -= 2.8183e-8f * rpoly;
+  rpoly *= rtd_resistance;
+  neg_temp += 1.5243e-10f * rpoly;
+  return neg_temp;
 }
 
 void NX3L4051MAX31865Sensor::log_faults_(uint8_t faults) {

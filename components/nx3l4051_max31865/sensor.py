@@ -2,7 +2,6 @@ import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome import pins
 from esphome.components import nx3l4051, sensor
-from esphome.components.max31865 import sensor as max31865
 from esphome.const import (
     CONF_CLK_PIN,
     CONF_CS_PIN,
@@ -18,15 +17,22 @@ from esphome.const import (
 )
 
 CODEOWNERS = ["@idreamshen"]
-AUTO_LOAD = ["max31865", "spi"]
+AUTO_LOAD = ["spi"]
 DEPENDENCIES = ["nx3l4051"]
 
 CONF_MUX_ID = "mux_id"
 
 nx3l4051_max31865_ns = cg.esphome_ns.namespace("nx3l4051_max31865")
 NX3L4051MAX31865Sensor = nx3l4051_max31865_ns.class_(
-    "NX3L4051MAX31865Sensor", max31865.MAX31865Sensor
+    "NX3L4051MAX31865Sensor", sensor.Sensor, cg.PollingComponent
 )
+NX3L4051MAX31865ConfigFilter = nx3l4051_max31865_ns.enum(
+    "NX3L4051MAX31865ConfigFilter"
+)
+FILTER = {
+    "50HZ": NX3L4051MAX31865ConfigFilter.FILTER_50HZ,
+    "60HZ": NX3L4051MAX31865ConfigFilter.FILTER_60HZ,
+}
 
 CONFIG_SCHEMA = (
     sensor.sensor_schema(
@@ -50,7 +56,7 @@ CONFIG_SCHEMA = (
                 cv.resistance, cv.Range(min=100, max=1000)
             ),
             cv.Optional(CONF_MAINS_FILTER, default="60HZ"): cv.enum(
-                max31865.FILTER, upper=True, space=""
+                FILTER, upper=True, space=""
             ),
             cv.Optional(CONF_RTD_WIRES, default=4): cv.int_range(min=2, max=4),
         }
